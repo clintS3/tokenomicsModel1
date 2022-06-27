@@ -6,8 +6,6 @@ Created on Jun 18 2022
 @author: clint
 """
 
-#formal XYK implementation with xy = k = l^2 liquidity pool.
-#follows the Runtime Verification xy=k paper
 
 #import some stuff
 import numpy as np
