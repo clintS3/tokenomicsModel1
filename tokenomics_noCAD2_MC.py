@@ -38,6 +38,7 @@ def calculate_U(U_prev, momentum_U, decay_rate, B):
 
 #number of simulation timesteps
 #for 13s blocktime, there are about 2.4million blocks per year.
+numMonteCarloRuns = 5
 numTimeSteps = 1000
 steps = list(range(0, numTimeSteps))
 myRanChoice = [1,2,3,4]
@@ -62,12 +63,13 @@ lambda_S = np.zeros(numTimeSteps)
 lambda_D = np.zeros(numTimeSteps)
 departure_D = np.zeros(numTimeSteps)
 departure_S = np.zeros(numTimeSteps)
-numMonteCarloRuns = 5
+
 #setup for variables to save from monte carlo runs
-KK =  [[0 for x in range(numTimeSteps)] for y in range(numMonteCarloRuns)]
+KK = [[0 for x in range(numTimeSteps)] for y in range(numMonteCarloRuns)]
+DD = [[0 for x in range(numTimeSteps)] for y in range(numMonteCarloRuns)]
+SS = [[0 for x in range(numTimeSteps)] for y in range(numMonteCarloRuns)]
 
-
-for mc in range(0,numMonteCarloRuns-1):
+for mc in range(0,numMonteCarloRuns):
     #some constants
     u1 = 2
     u2 = 0.1
@@ -82,20 +84,27 @@ for mc in range(0,numMonteCarloRuns-1):
     #initial states
     S[0] = float(10000)
     D[0] = float(10000)
-    Q[0] = float(0)
-    P[0] = float(0)
+    Q[0] = min(D[0],S[0])
+    P[0] = D[0]/S[0]
     B[0] = float(69864.73)
     C[0] = float(1)
-    V[0] = float(0)
+    V[0] = float(1)
     U[0] = float(1)
     K[0] = float(1)
-    R[0] = float(0.0001)
+    R[0] = float(1)
     W[0] = float(float('inf')-B[0])
     M[0] = B[0]
     lambda_S[0] = float(1000)
     lambda_D[0] = float(1000)
+    Delta_D[0] = float(0)
+    Delta_S[0] = float(0)
     departure_D[0] = float(100)
     departure_S[0] = float(100)
+
+    #initial conds for each MC run
+    KK[mc][0] = K[0]
+    DD[mc][0] = D[0]
+    SS[mc][0] = S[0]
 
 
     # SIMULATION SECTION
@@ -105,6 +114,7 @@ for mc in range(0,numMonteCarloRuns-1):
         # offer service stage
         Delta_D[ii] = np.random.poisson(lambda_D[ii-1])
         Delta_S[ii] = np.random.poisson(lambda_S[ii-1])
+        #why is demand going down.
         D[ii] = D[ii-1] + Delta_D[ii] - departure_D[ii]
         S[ii] = S[ii-1] + Delta_S[ii] - departure_S[ii]
         
@@ -130,38 +140,54 @@ for mc in range(0,numMonteCarloRuns-1):
         # update signals
         B[ii] = B[ii-1]
         lambda_S[ii] = lambda_S[ii-1]*R[ii]/R[ii-1]
-        lambda_S[ii] = lambda_D[ii-1]*P[ii-1]/P[ii]
+        lambda_D[ii] = lambda_D[ii-1]*P[ii-1]/P[ii]
         departure_D[ii] = departure_D[ii-1]
         departure_S[ii] = departure_S[ii-1]
         
         #save monte carlo and sim steps.
         KK[mc][ii] = K[ii]
+        DD[mc][ii] = D[ii]
+        SS[mc][ii] = S[ii]
         
-        
 
-# for ii in range(1,numTimeSteps):
-averages = np.zeros(numTimeSteps)
-# averages = np.mean(KK[:][ii])
-
-
-vals_at_timestep =  [[0 for x in range(numMonteCarloRuns)] for y in range(numTimeSteps)]
-
-for ii in range(1,numTimeSteps):
-    for mc in range(0,numMonteCarloRuns-1):
-      vals_at_timestep[ii][mc] = KK[mc][ii]
-
-averages = [ 0 for x in range(numTimeSteps)]
-
-for ii in range(0,numTimeSteps-1):
-    averages[ii] = np.mean(vals_at_timestep[ii])
-  
+#post-process: average over monte carlo runs.
+def get_MC_Averages(numTimeSteps, numMonteCarloRuns, var):
+    # average over all MC runs to generate one value at each point in time.
+    averages = np.zeros(numTimeSteps)
+    vals_at_timestep =  [[0 for x in range(numMonteCarloRuns)] for y in range(numTimeSteps)]
+    #loop over time and MC runs and rearrange
+    for ii in range(1,numTimeSteps):
+        for mc in range(0,numMonteCarloRuns-1):
+          vals_at_timestep[ii][mc] = var[mc][ii]
+    
+    averages = [ 0 for x in range(numTimeSteps)]
+    #average vals
+    for ii in range(0,numTimeSteps-1):
+        averages[ii] = np.mean(vals_at_timestep[ii])
+    return averages
    
 
-fig = make_subplots(rows=1, cols=1)
+
+KKav = get_MC_Averages(numTimeSteps, numMonteCarloRuns, KK)
+DDav = get_MC_Averages(numTimeSteps, numMonteCarloRuns, DD)
+SSav = get_MC_Averages(numTimeSteps, numMonteCarloRuns, SS)
+
+fig = make_subplots(rows=3, cols=1)
 row = 1
 col = 1
-fig.add_trace(go.Scatter(x=np.arange(1,numTimeSteps), y=averages, name='K av'), row=row,col=col)
+fig.add_trace(go.Scatter(x=np.arange(1,numTimeSteps), y=KKav, name='Tok Value'), row=row,col=col)
 fig.update_yaxes(title_text='K',row=row,col=col) 
+
+row = 2
+col = 1
+fig.add_trace(go.Scatter(x=np.arange(1,numTimeSteps), y=DDav, name='Demand'), row=row,col=col)
+fig.update_yaxes(title_text='D',row=row,col=col) 
+
+row = 3
+col = 1
+fig.add_trace(go.Scatter(x=np.arange(1,numTimeSteps), y=SSav, name='Supply'), row=row,col=col)
+fig.update_yaxes(title_text='S',row=row,col=col) 
+
 fig.show()
 
 
@@ -283,6 +309,7 @@ except:
 #constant exiting of supply and demand    
 Xs[ii] = Xs[ii-1]
 Xd[ii] = Xd[ii-1]
+
 
 #logic to manipulate supply and demand over time
 # if ii >= 100 and ii <=200:
